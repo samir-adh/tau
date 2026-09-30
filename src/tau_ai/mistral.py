@@ -285,14 +285,16 @@ class _ToolCallBuilder:
         self.arguments_parts: list[str] = []
 
     def add_delta(self, delta: Mapping[str, Any]) -> None:
+        # Some backends repeat "id"/"name" as empty strings on continuation
+        # chunks; keep the first non-empty value.
         call_id = delta.get("id")
-        if isinstance(call_id, str) and call_id != "null":
+        if isinstance(call_id, str) and call_id and call_id != "null":
             self.id = call_id
         function = delta.get("function")
         if not isinstance(function, Mapping):
             return
         name = function.get("name")
-        if isinstance(name, str):
+        if isinstance(name, str) and name:
             self.name = name
         arguments = function.get("arguments")
         if isinstance(arguments, str):
@@ -414,9 +416,9 @@ def _message_to_mistral(message: AgentMessage) -> dict[str, JSONValue]:
     if isinstance(message, UserMessage):
         return {"role": "user", "content": message.text}
     if isinstance(message, AssistantMessage):
+        # Mistral rejects unknown assistant fields (422 extra_forbidden), so prior
+        # thinking is not replayed.
         item: dict[str, JSONValue] = {"role": "assistant", "content": message.text}
-        if message.thinking_text:
-            item["reasoning_content"] = message.thinking_text
         if message.tool_calls:
             item["tool_calls"] = [
                 _tool_call_to_mistral(tool_call) for tool_call in message.tool_calls
